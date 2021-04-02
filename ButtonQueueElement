@@ -1,0 +1,17 @@
+using System.Collections;
+using System.Collections.Generic;
+using UnityEngine;
+
+public class ButtonQueue
+{
+    private string button;
+    private Queue<string> queue = new Queue<string>();
+
+    public string Button { get => button; set => button = value; }
+    public Queue<string> Queue { get => queue; set => queue = value; }
+
+    public ButtonQueue(string button)
+    {
+        this.button = button;
+    }
+}
