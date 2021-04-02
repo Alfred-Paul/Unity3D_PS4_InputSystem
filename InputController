@@ -1,0 +1,234 @@
+using System.Collections;
+using System.Collections.Generic;
+using UnityEngine;
+using System.Linq;
+using System;
+
+public class InputController : MonoBehaviour
+{
+    #region Singleton
+    private static InputController _instance;
+    public static InputController Instance { get { return _instance; } }
+    #endregion
+
+    #region Local variables 
+
+    private Vector2 joyStickInput;
+    private Vector2 joyStickInput2;
+    private Vector2 padInput;
+
+    private ButtonQueue[] buttonQueue = new ButtonQueue[8];
+    private List<int> tempQueue = new List<int>();
+
+    //How long the queue waits to remove input
+    //0.01667 is approximately 1/60 and helps handle input at a consisten rate
+    private readonly float timeToDequeue = 0.01667f;
+    private float dequeueTimer;
+
+    //How long the queue waits to move input from temp queue to main queue
+    //Used for enabling simultaneous inputs without frame perfect timing
+    private readonly float timeToqueue = 0.01667f * 3;
+    private float queueTimer;
+
+    //How long the input will remain in queue
+    private int enqueueCount = 10;
+    #endregion
+
+    #region Input Accessors
+    /// <summary>
+    /// This section is so you can reference the accessor methods easily without having to know
+    /// what value an individual button is. Also will allow buttons to be changed without changing the code
+    /// currently button changing is not implemented
+    /// </summary>
+    public Vector2 JoyStickInput => joyStickInput;
+    public Vector2 JoyStickInput2 => joyStickInput2;
+    public Vector2 PadInput => padInput;
+
+    public bool SquarePressed => CheckButton(Buttons.X);
+    public bool TrianglePressed => CheckButton(Buttons.Triangle);
+    public bool CirclePressed => CheckButton(Buttons.Circle);
+    public bool XPressed => CheckButton(Buttons.X);
+    public bool R1Pressed => CheckButton(Buttons.R1);
+    public bool R2Pressed => CheckButton(Buttons.R2);
+    public bool L1Pressed => CheckButton(Buttons.L1);
+    public bool L2Pressed => CheckButton(Buttons.L2);
+
+    public bool SquareHeld => CheckButtonHeld(Buttons.buttons.X.ToString());
+    public bool TriangleHeld => CheckButtonHeld(Buttons.buttons.Triangle.ToString());
+    public bool CircleHeld => CheckButtonHeld(Buttons.buttons.Circle.ToString());
+    public bool XHeld => CheckButtonHeld(Buttons.buttons.X.ToString());
+    public bool R1Held => CheckButtonHeld(Buttons.buttons.R1.ToString());
+    public bool R2Held => CheckButtonHeld(Buttons.buttons.R2.ToString());
+    public bool L1Held => CheckButtonHeld(Buttons.buttons.L1.ToString());
+    public bool L2Held => CheckButtonHeld(Buttons.buttons.L2.ToString());
+
+    public bool SquareReleased => CheckButtonReleased(Buttons.buttons.X.ToString());
+    public bool TriangleReleased => CheckButtonReleased(Buttons.buttons.Triangle.ToString());
+    public bool CircleReleased => CheckButtonReleased(Buttons.buttons.Circle.ToString());
+    public bool XReleased => CheckButtonReleased(Buttons.buttons.X.ToString());
+    public bool R1Released => CheckButtonReleased(Buttons.buttons.R1.ToString());
+    public bool R2Released => CheckButtonReleased(Buttons.buttons.R2.ToString());
+    public bool L1Released => CheckButtonReleased(Buttons.buttons.L1.ToString());
+    public bool L2Released => CheckButtonReleased(Buttons.buttons.L2.ToString());
+    #endregion
+
+    private void Awake()
+    {
+        //Checks if instance already exists for singleton pattern
+        if (_instance != null && _instance != this)
+        {
+            Destroy(this.gameObject);
+        }
+        else
+        {
+            _instance = this;
+        }
+
+        //initializes button queue elements
+        foreach (Buttons.buttons button in Enum.GetValues(typeof(Buttons.buttons)))
+        {
+            buttonQueue[(int)button] = new ButtonQueue(button.ToString());
+        }
+    }
+
+    public void Update()
+    {
+        joyStickInput = new Vector2(Input.GetAxis("Horizontal"), Input.GetAxis("Vertical"));
+
+        padInput = new Vector2(Input.GetAxis("HorizontalPad"), Input.GetAxis("VerticalPad"));
+
+        joyStickInput2 = new Vector2(Input.GetAxis("Horizontal2"), Input.GetAxis("Vertical2"));
+
+        DequeueInput();
+
+        CheckInput();
+
+        AddToQueue();
+    }
+
+    #region InputQueue
+    /// <summary>
+    /// This region is all methods that handle adding input to queue
+    /// </summary>
+    /// 
+
+    //CheckInput checks for button press and adds that button press to a tempqueue if a temp queue is active
+    //if a temp queue is not active it resets the timer and starts a new tempqueue
+    private void CheckInput()
+    {
+        foreach (Buttons.buttons button in Enum.GetValues(typeof(Buttons.buttons)))
+        {
+            if (Input.GetButtonDown(button.ToString()))
+            {
+                tempQueue.Add((int)button);
+                if (queueTimer <= 0)
+                {
+                    queueTimer = timeToqueue;
+                }
+            }
+        }
+    }
+
+    //Moves input from tempqueue to main queue and clears tempqueue
+    private void AddToQueue()
+    {
+        if (queueTimer > 0)
+        {
+            queueTimer -= Time.deltaTime;
+            return;
+        }
+
+        foreach (int t in tempQueue)
+        {
+            if (buttonQueue[t].Queue.Count < enqueueCount / 2)
+            {
+                for (int i = 0; i < enqueueCount; i++)
+                {
+                    buttonQueue[t].Queue.Enqueue(buttonQueue[t].Button);
+                }
+            }
+        }
+        tempQueue.Clear();
+    }
+
+    //dequeues input every 60th of a second
+    private void DequeueInput()
+    {
+        if (dequeueTimer > 0)
+        {
+            dequeueTimer -= Time.deltaTime;
+        }
+        else
+        {
+            foreach (ButtonQueue q in buttonQueue)
+            {
+                if (q.Queue.Count > 0)
+                {
+                    q.Queue.Dequeue();
+                }
+            }
+            dequeueTimer = timeToDequeue;
+        }
+    }
+
+    #endregion
+
+    #region Input Check
+
+    //checks for active input inside main queue by checking if queue index is greater than zero
+    private bool IsButtonActive(int button)
+    {
+        if (buttonQueue[button].Queue.Count > 0)
+        {
+            return true;
+        }
+        return false;
+    }
+   
+    //checks for single button without condition
+    private bool CheckButton(int button)
+    {
+        if(IsButtonActive(button))
+        {
+            ClearQueue(button);
+            return true;
+        }
+        return false;
+    }
+
+    //checks for single button with a boolean conditional attached
+    public bool CheckButtonWithCondition(int button, bool condition)
+    {
+        if (IsButtonActive(button) && condition)
+        {
+            ClearQueue(button);
+            return true;
+        }
+        return false;
+    }
+
+    //checks if single button is held
+    private bool CheckButtonHeld(string button)
+    {
+        return Input.GetButton(button);
+    }
+
+    //checks if single button was released on this frame
+    private bool CheckButtonReleased(string button)
+    {
+        return Input.GetButtonUp(button);
+    }
+
+    //checks all buttons inside input queue and returns true if any exists inside queue
+    public bool CheckAnyButtonPressed()
+    {
+        return buttonQueue.Any<ButtonQueue>(x => x.Queue.Count > 0);
+    }
+
+    //clears button instance from queue
+    public void ClearQueue(int button)
+    {
+        buttonQueue[button].Queue.Clear();
+    }
+    #endregion
+}
